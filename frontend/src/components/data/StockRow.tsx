@@ -43,7 +43,7 @@ const StockRow = ({ company, prices, onSelect, isActive }: StockRowProps) => {
       className={
         isActive
           ? "bg-bg-card cursor-pointer"
-          : "hover:bg-bg-surface cursor-pointer"
+          : "cursor-pointer transition-colors hover:bg-bg-surface"
       }
       onClick={() => onSelect?.(company.symbol)}
       tabIndex={0}
@@ -56,7 +56,9 @@ const StockRow = ({ company, prices, onSelect, isActive }: StockRowProps) => {
       }}
     >
       <td className="px-3 py-2 md:py-3">
-        <div className="text-body text-text-primary">{company.symbol}</div>
+        <div className="text-body font-display text-text-primary">
+          {company.symbol}
+        </div>
         <div className="truncate text-label text-text-muted">
           {company.name}
         </div>

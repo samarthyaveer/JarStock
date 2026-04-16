@@ -42,7 +42,9 @@ const PriceCell = ({
   return (
     <span
       ref={spanRef}
-      className={`tabular-nums inline-block text-right ${className || ""}`}
+      className={`tabular-nums font-mono inline-block text-right ${
+        className || ""
+      }`}
       style={{ minWidth }}
     >
       -

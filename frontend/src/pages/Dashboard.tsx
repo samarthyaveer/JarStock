@@ -120,21 +120,26 @@ const Dashboard = () => {
 
   const priceList = priceQuery.data?.prices || [];
   const latestClose = priceList[priceList.length - 1]?.close;
+  const latestDate = priceList[priceList.length - 1]?.date;
+  const asOf = gainersQuery.data?.as_of || losersQuery.data?.as_of || latestDate;
+  const isWatched = selectedCompany
+    ? isWatching(selectedCompany.symbol)
+    : false;
 
   return (
     <div className="space-y-4 md:space-y-6">
       <div className="grid grid-cols-1 gap-4 md:gap-6 xl:grid-cols-12">
         <div className="xl:col-span-3 space-y-3 md:space-y-4">
-          <div className="rounded-panel border border-border bg-bg-card p-3 md:p-4">
+          <div className="panel-card rounded-panel p-3 md:p-4">
             <div className="text-label text-text-muted">Companies</div>
             <input
               aria-label="Search companies"
-              className="mt-3 w-full rounded-card border border-border bg-bg-surface px-3 py-2 text-body text-text-primary"
+              className="input-field mt-3 w-full rounded-card px-3 py-2 text-body text-text-primary focus:outline-none"
               placeholder="Search"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
             />
-            <div className="mt-3 space-y-2 max-h-[220px] sm:max-h-[320px] md:max-h-[420px] overflow-y-auto">
+            <div className="mt-3 space-y-2 max-h-[220px] sm:max-h-[320px] md:max-h-[420px] overflow-y-auto pr-1">
               {companiesQuery.isLoading && (
                 <div className="text-body text-text-muted">
                   Loading companies
@@ -148,20 +153,33 @@ const Dashboard = () => {
                   onClick={() => setSelectedSymbol(company.symbol)}
                   className={
                     company.symbol === selectedSymbol
-                      ? "flex w-full items-center justify-between rounded-card border border-border bg-bg-surface px-3 py-2"
-                      : "flex w-full items-center justify-between rounded-card border border-border px-3 py-2 text-text-muted"
+                      ? "list-item list-item-active flex w-full items-center justify-between rounded-card px-3 py-2 text-body"
+                      : "list-item flex w-full items-center justify-between rounded-card px-3 py-2 text-body text-text-muted hover:text-text-primary"
                   }
                 >
-                  <span className="truncate text-left">
-                    {company.symbol} {company.name}
+                  <div className="min-w-0 text-left">
+                    <div className="truncate font-display">
+                      {company.symbol}
+                    </div>
+                    <div className="truncate text-label text-text-muted">
+                      {company.name}
+                    </div>
+                  </div>
+                  <span
+                    className={
+                      company.symbol === selectedSymbol
+                        ? "text-label font-mono text-text-primary"
+                        : "text-label font-mono text-text-muted"
+                    }
+                  >
+                    {company.sector || "-"}
                   </span>
-                  <span className="text-label">{company.sector || "-"}</span>
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="hidden sm:block rounded-panel border border-border bg-bg-card p-3 md:p-4">
+          <div className="hidden sm:block panel-card rounded-panel p-3 md:p-4">
             <div className="text-label text-text-muted">Watchlist</div>
             <div className="mt-3 space-y-2">
               {selectedCompany ? (
@@ -169,9 +187,13 @@ const Dashboard = () => {
                   type="button"
                   aria-label="Toggle watchlist"
                   onClick={() => toggleWatch(selectedCompany.symbol)}
-                  className="w-full rounded-card border border-border px-3 py-2 text-body"
+                  className={
+                    isWatched
+                      ? "pill pill-active w-full rounded-chip px-3 py-2 text-body"
+                      : "pill w-full rounded-chip px-3 py-2 text-body text-text-primary"
+                  }
                 >
-                  {isWatching(selectedCompany.symbol) ? "Remove" : "Add"} {selectedCompany.symbol}
+                  {isWatched ? "Watching" : "Add"} {selectedCompany.symbol}
                 </button>
               ) : (
                 <div className="text-body text-text-muted">Select a symbol</div>
@@ -181,7 +203,56 @@ const Dashboard = () => {
         </div>
 
         <div className="xl:col-span-9 space-y-4 md:space-y-6">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="panel-card rounded-panel p-4 md:p-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0 space-y-2">
+                <div className="text-label text-text-muted">Overview</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="font-display text-hero">
+                    {selectedSymbol || "Select symbol"}
+                  </div>
+                  {selectedCompany?.sector ? (
+                    <span className="chip rounded-chip px-2 py-1 text-label text-text-muted">
+                      {selectedCompany.sector}
+                    </span>
+                  ) : null}
+                </div>
+                <div className="truncate text-body text-text-muted">
+                  {selectedCompany?.name ||
+                    "Pick a company to explore pricing and insight."}
+                </div>
+                {asOf ? (
+                  <div className="text-label text-text-muted font-mono">
+                    As of {asOf}
+                  </div>
+                ) : null}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <RangeToggle range={range} onChange={setRange} />
+                <ToggleButton
+                  active={showPrediction}
+                  onClick={() => setShowPrediction((prev) => !prev)}
+                  label="Prediction"
+                />
+                {selectedCompany ? (
+                  <button
+                    type="button"
+                    aria-label="Toggle watchlist"
+                    onClick={() => toggleWatch(selectedCompany.symbol)}
+                    className={
+                      isWatched
+                        ? "pill pill-active rounded-chip px-3 py-2 text-label"
+                        : "pill rounded-chip px-3 py-2 text-label text-text-primary"
+                    }
+                  >
+                    {isWatched ? "Watching" : "Add Watchlist"}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <StatCard
               label="Companies"
               value={`${companiesQuery.data?.length || 0}`}
@@ -202,15 +273,6 @@ const Dashboard = () => {
               value={
                 summaryQuery.data ? formatNumber(summaryQuery.data.low_52w) : "-"
               }
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <RangeToggle range={range} onChange={setRange} />
-            <ToggleButton
-              active={showPrediction}
-              onClick={() => setShowPrediction((prev) => !prev)}
-              label="Prediction"
             />
           </div>
 
@@ -262,14 +324,14 @@ const Dashboard = () => {
           </div>
 
           <div
-            className={`${showCompare ? "block" : "hidden"} rounded-panel border border-border bg-bg-card p-3 md:block md:p-4`}
+            className={`${showCompare ? "block" : "hidden"} panel-card rounded-panel p-3 md:block md:p-4`}
           >
             <div className="flex items-center justify-between">
               <div className="text-label text-text-muted">Compare</div>
               <div className="flex gap-2">
                 <select
                   aria-label="Compare symbol"
-                  className="rounded-card border border-border bg-bg-surface px-2 py-1 text-label"
+                  className="input-field rounded-card px-2 py-1 text-label"
                   value={compareSymbol || ""}
                   onChange={(event) => setCompareSymbol(event.target.value)}
                 >
@@ -285,7 +347,7 @@ const Dashboard = () => {
             </div>
             {compareQuery.data ? (
               <div className="mt-4 space-y-3">
-                <div className="text-label text-text-muted tabular-nums">
+                <div className="text-label text-text-muted tabular-nums font-mono">
                   Correlation {formatNumber(compareQuery.data.correlation, 3)}
                 </div>
                 <CompareChart

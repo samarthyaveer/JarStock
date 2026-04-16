@@ -9,8 +9,8 @@ const navItems = [
 ];
 
 const Sidebar = () => (
-  <aside className="fixed left-0 top-0 hidden h-full border-r border-border bg-bg-surface md:flex md:w-[60px] md:flex-col md:items-center md:gap-4 md:py-6 lg:w-[240px] lg:items-start lg:px-6">
-    <div className="hidden text-heading lg:block">JarStock</div>
+  <aside className="fixed left-0 top-0 hidden h-full border-r border-border bg-bg-surface backdrop-blur md:flex md:w-[72px] md:flex-col md:items-center md:gap-4 md:py-6 lg:w-[260px] lg:items-start lg:px-6">
+    <div className="hidden font-display text-heading lg:block">JarStock</div>
     <nav className="flex w-full flex-col gap-2">
       {navItems.map((item) => (
         <NavLink
@@ -19,14 +19,14 @@ const Sidebar = () => (
           aria-label={item.label}
           className={({ isActive }) =>
             [
-              "flex items-center gap-3 rounded-card px-3 py-2 text-body",
+              "list-item flex items-center gap-3 rounded-card px-3 py-2 text-body",
               isActive
-                ? "bg-bg-card text-text-primary"
+                ? "list-item-active"
                 : "text-text-muted hover:text-text-primary",
             ].join(" ")
           }
         >
-          <span className="flex h-8 w-8 items-center justify-center rounded-chip border border-border text-label">
+          <span className="chip flex h-9 w-9 items-center justify-center rounded-chip text-label">
             {item.short}
           </span>
           <span className="hidden lg:block">{item.label}</span>

@@ -122,10 +122,10 @@ const CompareChart = ({ data, symbol1, symbol2 }: CompareChartProps) => {
   }, [seriesOne, seriesTwo]);
 
   return (
-    <div className="rounded-panel border border-border bg-bg-card p-3 md:p-4">
+    <div className="panel-card rounded-panel p-3 md:p-4">
       <div className="flex items-center justify-between">
         <div className="text-label text-text-muted">Compare</div>
-        <div className="flex gap-3 text-label">
+        <div className="flex gap-3 text-label font-mono">
           <span style={{ color: "var(--accent-green)" }}>{symbol1}</span>
           <span style={{ color: "var(--accent-yellow)" }}>{symbol2}</span>
         </div>

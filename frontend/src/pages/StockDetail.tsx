@@ -49,21 +49,31 @@ const StockDetail = () => {
 
   return (
     <div className="space-y-4 md:space-y-6">
-      <div className="rounded-panel border border-border bg-bg-card p-3 md:p-4">
-        <div className="text-label text-text-muted">Latest</div>
-        <div className="mt-2 flex items-center gap-6">
-          <PriceCell value={last} className="text-heading md:text-hero" minWidth={120} />
+      <div className="panel-card rounded-panel p-4 md:p-6">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="min-w-0">
+            <div className="text-label text-text-muted">Stock</div>
+            <div className="font-display text-hero">
+              {symbol ? symbol.toUpperCase() : "Stock"}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <RangeToggle range={range} onChange={setRange} />
+            <ToggleButton
+              active={showPrediction}
+              onClick={() => setShowPrediction((prev) => !prev)}
+              label="Prediction"
+            />
+          </div>
+        </div>
+        <div className="mt-4 flex items-center gap-6">
+          <PriceCell
+            value={last}
+            className="text-heading md:text-hero"
+            minWidth={120}
+          />
           <ChangeCell value={change} minWidth={120} />
         </div>
-      </div>
-
-      <div className="flex items-center justify-between">
-        <RangeToggle range={range} onChange={setRange} />
-        <ToggleButton
-          active={showPrediction}
-          onClick={() => setShowPrediction((prev) => !prev)}
-          label="Prediction"
-        />
       </div>
 
       <PriceChart

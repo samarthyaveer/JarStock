@@ -26,11 +26,11 @@ const Search = () => {
   }, [companiesQuery.data, term]);
 
   return (
-    <div className="rounded-panel border border-border bg-bg-card p-3 md:p-4">
+    <div className="panel-card rounded-panel p-3 md:p-4">
       <div className="text-label text-text-muted">Search</div>
       <input
         aria-label="Search stocks"
-        className="mt-3 w-full rounded-card border border-border bg-bg-surface px-3 py-2 text-body"
+        className="input-field mt-3 w-full rounded-card px-3 py-2 text-body text-text-primary focus:outline-none"
         placeholder="Type a symbol or name"
         value={term}
         onChange={(event) => setTerm(event.target.value)}
@@ -42,12 +42,17 @@ const Search = () => {
             type="button"
             aria-label={`Open ${company.symbol}`}
             onClick={() => navigate(`/stocks/${company.symbol}`)}
-            className="flex w-full items-center justify-between rounded-card border border-border px-3 py-2 text-body"
+            className="list-item flex w-full items-center justify-between rounded-card px-3 py-2 text-body"
           >
-            <span className="truncate">
-              {company.symbol} {company.name}
-            </span>
-            <span className="text-label text-text-muted">
+            <div className="min-w-0 text-left">
+              <div className="truncate font-display">
+                {company.symbol}
+              </div>
+              <div className="truncate text-label text-text-muted">
+                {company.name}
+              </div>
+            </div>
+            <span className="text-label font-mono text-text-muted">
               {company.sector || "-"}
             </span>
           </button>

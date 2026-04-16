@@ -128,7 +128,7 @@ const PriceChart = ({ data, showPrediction = false }: PriceChartProps) => {
   }, [seriesData, predictionData]);
 
   return (
-    <div className="rounded-panel border border-border bg-bg-card p-3 md:p-4">
+    <div className="panel-card rounded-panel p-3 md:p-4">
       <div className="flex items-center justify-between">
         <div className="text-label text-text-muted">Price</div>
       </div>

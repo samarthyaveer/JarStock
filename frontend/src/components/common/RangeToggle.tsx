@@ -22,8 +22,8 @@ const RangeToggle = ({ range, onChange }: RangeToggleProps) => (
         onClick={() => onChange(frame.value)}
         className={
           frame.value === range
-            ? "rounded-chip border border-border bg-bg-surface px-2 py-1 text-label text-text-primary"
-            : "rounded-chip border border-border px-2 py-1 text-label text-text-muted"
+            ? "pill pill-active rounded-chip px-2 py-1 text-label"
+            : "pill rounded-chip px-2 py-1 text-label text-text-muted"
         }
       >
         {frame.label}

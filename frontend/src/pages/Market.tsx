@@ -37,10 +37,10 @@ const Market = () => {
   );
 
   return (
-    <div className="rounded-panel border border-border bg-bg-card p-3 md:p-4">
+    <div className="panel-card rounded-panel p-3 md:p-4">
       <div className="text-label text-text-muted">Market</div>
-      <div className="mt-3 overflow-hidden">
-        <table className="w-full table-fixed text-body">
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full min-w-[640px] table-fixed text-body">
           <colgroup>
             <col style={{ width: "40%" }} />
             <col style={{ width: "20%" }} />

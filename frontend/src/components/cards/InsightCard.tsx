@@ -26,7 +26,7 @@ const getToneClass = (insight: InsightResponse) => {
 };
 
 const InsightCard = ({ insight, isLoading }: InsightCardProps) => (
-  <div className="rounded-panel border border-border bg-bg-card p-3 md:p-4">
+  <div className="panel-card rounded-panel p-3 md:p-4">
     <div className="text-label text-text-muted">Insight</div>
     {isLoading ? (
       <div className="mt-4 space-y-2">
@@ -35,11 +35,15 @@ const InsightCard = ({ insight, isLoading }: InsightCardProps) => (
       </div>
     ) : insight ? (
       <div className="mt-3 space-y-2 text-body">
-        <div className={`text-sub md:text-heading ${getToneClass(insight)}`}>
+        <div
+          className={`font-display text-sub md:text-heading ${getToneClass(
+            insight,
+          )}`}
+        >
           {insight.label}
         </div>
         <div className="text-text-muted">{insight.summary}</div>
-        <div className="text-label text-text-muted tabular-nums">
+        <div className="text-label text-text-muted tabular-nums font-mono">
           {insight.risk} | Confidence {Math.round(insight.confidence * 100)}%
         </div>
       </div>

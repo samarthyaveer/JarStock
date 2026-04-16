@@ -10,7 +10,7 @@ type MoversCardProps = {
 };
 
 const MoversCard = ({ title, items, isLoading }: MoversCardProps) => (
-  <div className="rounded-panel border border-border bg-bg-card p-3 md:p-4">
+  <div className="panel-card rounded-panel p-3 md:p-4">
     <div className="text-label text-text-muted">{title}</div>
     {isLoading ? (
       <div className="mt-3 space-y-2">
@@ -27,12 +27,12 @@ const MoversCard = ({ title, items, isLoading }: MoversCardProps) => (
           >
             <div className="min-w-0">
               <div className="truncate">{item.symbol} {item.name}</div>
-              <div className="text-label text-text-muted tabular-nums">
+              <div className="text-label text-text-muted tabular-nums font-mono">
                 {formatNumber(item.close)}
               </div>
             </div>
             <div
-              className="tabular-nums text-right"
+              className="tabular-nums text-right font-mono"
               style={{ minWidth: 88, color: getPnlColor(item.daily_return) }}
             >
               {getArrow(item.daily_return)} {formatPercent(item.daily_return)}

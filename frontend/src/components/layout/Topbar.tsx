@@ -16,12 +16,17 @@ const Topbar = () => {
   const title = titleMap[location.pathname] || "JarStock";
 
   return (
-    <header className="fixed left-0 right-0 top-0 z-10 h-[52px] border-b border-border bg-bg-surface md:pl-[60px] lg:pl-[240px]">
+    <header className="fixed left-0 right-0 top-0 z-10 h-[64px] border-b border-border bg-bg-surface backdrop-blur md:pl-[72px] lg:pl-[260px]">
       <div className="mx-auto flex h-full w-full max-w-[1280px] items-center justify-between px-4 md:px-6 lg:px-8">
-        <div className="text-sub">{title}</div>
-        <div className="flex items-center gap-3 text-label text-text-muted">
-          <span>Selected</span>
-          <span className="rounded-chip border border-border px-2 py-1 text-text-primary">
+        <div className="min-w-0">
+          <div className="text-label text-text-muted">Now viewing</div>
+          <div className="font-display text-sub md:text-heading truncate">
+            {title}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 text-label">
+          <span className="hidden sm:inline text-text-muted">Selected</span>
+          <span className="chip rounded-chip px-2 py-1 text-text-primary font-mono">
             {selectedSymbol || "None"}
           </span>
         </div>

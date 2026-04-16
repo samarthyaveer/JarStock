@@ -20,7 +20,7 @@ const Watchlist = () => {
   );
 
   return (
-    <div className="rounded-panel border border-border bg-bg-card p-3 md:p-4">
+    <div className="panel-card rounded-panel p-3 md:p-4">
       <div className="text-label text-text-muted">Watchlist</div>
       <div className="mt-3 space-y-2">
         {watchlistCompanies.length === 0 && (
@@ -29,13 +29,13 @@ const Watchlist = () => {
         {watchlistCompanies.map((company) => (
           <div
             key={company.symbol}
-            className="flex items-center justify-between rounded-card border border-border px-3 py-2"
+            className="list-item flex items-center justify-between rounded-card px-3 py-2"
           >
             <button
               type="button"
               aria-label={`Open ${company.symbol}`}
               onClick={() => navigate(`/stocks/${company.symbol}`)}
-              className="truncate text-left text-body"
+              className="min-w-0 truncate text-left text-body"
             >
               {company.symbol} {company.name}
             </button>
@@ -43,7 +43,7 @@ const Watchlist = () => {
               type="button"
               aria-label={`Remove ${company.symbol}`}
               onClick={() => toggleSymbol(company.symbol)}
-              className="text-label text-text-muted"
+              className="text-label text-text-muted hover:text-text-primary"
             >
               Remove
             </button>

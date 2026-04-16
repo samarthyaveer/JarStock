@@ -15,7 +15,7 @@ const ChangeCell = ({ value, minWidth = 88 }: ChangeCellProps) => {
 
   return (
     <span
-      className="tabular-nums inline-block text-right"
+      className="tabular-nums font-mono inline-block text-right"
       style={{ minWidth, color }}
     >
       {numericValue === null ? "-" : `${arrow} ${formatPercent(numericValue)}`}
