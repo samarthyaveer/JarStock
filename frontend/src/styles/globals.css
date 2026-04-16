@@ -45,6 +45,11 @@ body,
   height: 100%;
 }
 
+html {
+  background: var(--bg-primary);
+  overscroll-behavior: none;
+}
+
 body {
   margin: 0;
   background: radial-gradient(
@@ -58,8 +63,10 @@ body {
       transparent 60%
     ),
     linear-gradient(180deg, #0b0f14 0%, #0d1218 100%);
+  background-color: var(--bg-primary);
   color: var(--text-primary);
   overflow-x: hidden;
+  overscroll-behavior: none;
 }
 
 a {
