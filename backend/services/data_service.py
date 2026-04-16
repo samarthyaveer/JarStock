@@ -42,6 +42,9 @@ _REFRESH_LOCK = threading.Lock()
 _REFRESH_IN_FLIGHT: set[str] = set()
 _LAST_REFRESH: dict[str, float] = {}
 _MARKET_SNAPSHOT_WINDOW = 7
+_YF_LOCK = threading.Lock()
+_LAST_YF_FAILURE: dict[str, float] = {}
+_LAST_YF_BULK_FAILURE: Optional[float] = None
 
 
 def list_companies(db: Session) -> list[CompanyOut]:
@@ -252,6 +255,12 @@ def bootstrap_data(db: Session) -> None:
     symbols = _parse_symbols(symbols_env) if symbols_env else DEFAULT_SYMBOLS
     has_data = db.query(Stock).count() > 0
 
+    if not has_data:
+        seeded = _seed_from_fallback(db, symbols)
+        has_data = bool(seeded)
+        if has_data and not refresh:
+            return
+
     if not refresh and has_data:
         return
 
@@ -283,6 +292,19 @@ def _refresh_ttl_seconds() -> int:
     except ValueError:
         value = 900
     return max(60, value)
+
+
+def _yf_cooldown_seconds() -> int:
+    raw_value = os.getenv("JARSTOCK_YF_COOLDOWN_SECONDS", "900")
+    try:
+        value = int(raw_value)
+    except ValueError:
+        value = 900
+    return max(60, value)
+
+
+def _yf_disabled() -> bool:
+    return os.getenv("JARSTOCK_YF_DISABLE", "0") == "1"
 
 
 def _market_stale_days() -> int:
@@ -357,11 +379,18 @@ def _upsert_symbol_data(
 
 
 def _fetch_history(symbol: str) -> pd.DataFrame:
+    if _should_skip_yf(symbol=symbol):
+        fallback_df = _fallback_history(symbol)
+        if not fallback_df.empty:
+            logger.info("yfinance_skipped", extra={"symbol": symbol})
+        return fallback_df
+
     proxy = _get_proxy()
     try:
         ticker = yf.Ticker(symbol, proxy=proxy)
         df = ticker.history(period="1y", auto_adjust=False)
     except Exception as exc:
+        _record_yf_failure(symbol)
         logger.warning("yfinance_history_failed", extra={"symbol": symbol, "error": str(exc)})
         df = pd.DataFrame()
 
@@ -378,9 +407,14 @@ def _fetch_history(symbol: str) -> pd.DataFrame:
 
 
 def _fetch_history_bulk(symbols: list[str]) -> dict[str, pd.DataFrame]:
-    proxy = _get_proxy()
     if not symbols:
         return {}
+
+    if _should_skip_yf(bulk=True):
+        logger.info("yfinance_bulk_skipped")
+        return {}
+
+    proxy = _get_proxy()
 
     try:
         df = yf.download(
@@ -393,6 +427,7 @@ def _fetch_history_bulk(symbols: list[str]) -> dict[str, pd.DataFrame]:
             proxy=proxy,
         )
     except Exception as exc:
+        _record_yf_bulk_failure()
         logger.warning("yfinance_bulk_failed", extra={"error": str(exc)})
         return {}
 
@@ -418,11 +453,15 @@ def _fetch_history_bulk(symbols: list[str]) -> dict[str, pd.DataFrame]:
 
 
 def _fetch_info(symbol: str) -> dict:
+    if _should_skip_yf(symbol=symbol):
+        return _fallback_info(symbol)
+
     proxy = _get_proxy()
     ticker = yf.Ticker(symbol, proxy=proxy)
     try:
         info = ticker.get_info() or {}
     except Exception as exc:
+        _record_yf_failure(symbol)
         logger.warning("yfinance_info_failed", extra={"symbol": symbol, "error": str(exc)})
         info = {}
 
@@ -517,6 +556,35 @@ def _get_proxy() -> Optional[str]:
     return proxy or None
 
 
+def _should_skip_yf(symbol: Optional[str] = None, bulk: bool = False) -> bool:
+    if _yf_disabled():
+        return True
+
+    cooldown = _yf_cooldown_seconds()
+    now = time.time()
+    with _YF_LOCK:
+        if bulk and _LAST_YF_BULK_FAILURE:
+            if now - _LAST_YF_BULK_FAILURE < cooldown:
+                return True
+        if symbol:
+            last = _LAST_YF_FAILURE.get(symbol)
+            if last and now - last < cooldown:
+                return True
+
+    return False
+
+
+def _record_yf_failure(symbol: str) -> None:
+    with _YF_LOCK:
+        _LAST_YF_FAILURE[symbol] = time.time()
+
+
+def _record_yf_bulk_failure() -> None:
+    global _LAST_YF_BULK_FAILURE
+    with _YF_LOCK:
+        _LAST_YF_BULK_FAILURE = time.time()
+
+
 def _is_recent_date(value: date, stale_days: int) -> bool:
     cutoff = date.today() - timedelta(days=stale_days)
     return value >= cutoff
@@ -606,6 +674,31 @@ def _fallback_market_snapshot(window: int) -> Optional[MarketSnapshotResponse]:
         return None
 
     return MarketSnapshotResponse(as_of=as_of or derived_as_of or date.today(), items=items)
+
+
+def _seed_from_fallback(db: Session, symbols: list[str]) -> list[str]:
+    if not symbols:
+        return []
+
+    existing = {
+        stock.symbol: stock
+        for stock in db.query(Stock)
+        .filter(Stock.symbol.in_(symbols))
+        .all()
+    }
+    seeded: list[str] = []
+    for symbol in symbols:
+        df = _fallback_history(symbol)
+        if df.empty:
+            continue
+        name, sector = _resolve_stock_info(symbol, existing.get(symbol), include_info=False)
+        _upsert_symbol_data(db, symbol, name, sector, df, existing)
+        seeded.append(symbol)
+
+    if seeded:
+        db.commit()
+
+    return seeded
 
 
 def _fallback_history(symbol: str) -> pd.DataFrame:
