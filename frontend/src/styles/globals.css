@@ -270,10 +270,3 @@ a {
     transform: translateY(0);
   }
 }
-
-
-@media (prefers-reduced-motion: reduce) {
-  .spinner {
-    animation: none;
-  }
-}
