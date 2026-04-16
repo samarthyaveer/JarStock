@@ -1,5 +1,8 @@
+import json
 import logging
 import os
+from functools import lru_cache
+from pathlib import Path
 from typing import Iterable, Optional
 
 import pandas as pd
@@ -23,6 +26,8 @@ DEFAULT_SYMBOLS = [
     "TSLA",
     "NFLX",
 ]
+
+FALLBACK_PATH = Path(__file__).resolve().parents[1] / "data" / "fallback_prices.json"
 
 
 def list_companies(db: Session) -> list[CompanyOut]:
@@ -102,17 +107,44 @@ def refresh_symbol(db: Session, symbol: str) -> None:
 
 
 def _fetch_history(symbol: str) -> pd.DataFrame:
-    ticker = yf.Ticker(symbol)
-    df = ticker.history(period="1y", auto_adjust=False)
-    return _clean_history(df)
+    proxy = _get_proxy()
+    try:
+        ticker = yf.Ticker(symbol, proxy=proxy)
+        df = ticker.history(period="1y", auto_adjust=False)
+    except Exception as exc:
+        logger.warning("yfinance_history_failed", extra={"symbol": symbol, "error": str(exc)})
+        df = pd.DataFrame()
+
+    df = _clean_history(df)
+    if not df.empty:
+        return df
+
+    fallback_df = _fallback_history(symbol)
+    if not fallback_df.empty:
+        logger.warning("fallback_history_used", extra={"symbol": symbol})
+        return fallback_df
+
+    return pd.DataFrame()
 
 
 def _fetch_info(symbol: str) -> dict:
-    ticker = yf.Ticker(symbol)
+    proxy = _get_proxy()
+    ticker = yf.Ticker(symbol, proxy=proxy)
     try:
-        return ticker.get_info() or {}
-    except Exception:
-        return {}
+        info = ticker.get_info() or {}
+    except Exception as exc:
+        logger.warning("yfinance_info_failed", extra={"symbol": symbol, "error": str(exc)})
+        info = {}
+
+    if info:
+        return info
+
+    fallback_info = _fallback_info(symbol)
+    if fallback_info:
+        logger.warning("fallback_info_used", extra={"symbol": symbol})
+        return fallback_info
+
+    return {}
 
 
 def _clean_history(df: pd.DataFrame) -> pd.DataFrame:
@@ -188,6 +220,55 @@ def _build_rows(symbol: str, df: pd.DataFrame) -> tuple[list[Price], list[Metric
 
 def _normalize_symbol(symbol: str) -> str:
     return (symbol or "").strip().upper()
+
+
+def _get_proxy() -> Optional[str]:
+    proxy = os.getenv("JARSTOCK_YF_PROXY", "").strip()
+    return proxy or None
+
+
+@lru_cache(maxsize=1)
+def _fallback_payload() -> dict:
+    if not FALLBACK_PATH.exists():
+        return {}
+    try:
+        with FALLBACK_PATH.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except Exception as exc:
+        logger.warning("fallback_load_failed", extra={"error": str(exc)})
+        return {}
+
+
+def _fallback_history(symbol: str) -> pd.DataFrame:
+    payload = _fallback_payload()
+    entry = (payload.get("symbols") or {}).get(symbol)
+    if not entry:
+        return pd.DataFrame()
+
+    prices = entry.get("prices") or []
+    if not prices:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(prices)
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    return _clean_history(df)
+
+
+def _fallback_info(symbol: str) -> dict:
+    payload = _fallback_payload()
+    entry = (payload.get("symbols") or {}).get(symbol)
+    if not entry:
+        return {}
+
+    info: dict[str, str] = {}
+    name = entry.get("name")
+    sector = entry.get("sector")
+    if name:
+        info["longName"] = name
+    if sector:
+        info["sector"] = sector
+    return info
 
 
 def _parse_range_label(range_label: Optional[str]) -> Optional[int]:
