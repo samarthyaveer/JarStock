@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "../api/client";
 import InsightCard from "../components/cards/InsightCard";
@@ -17,6 +17,7 @@ const StockDetail = () => {
   const setSelectedSymbol = useUiStore((state) => state.setSelectedSymbol);
   const [range, setRange] = useState("90d");
   const [showPrediction, setShowPrediction] = useState(false);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     if (symbol) {
@@ -40,6 +41,19 @@ const StockDetail = () => {
     queryKey: ["insight", symbol],
     queryFn: () => api.getInsight(symbol || ""),
     enabled: Boolean(symbol),
+  });
+
+  useQuery({
+    queryKey: ["refresh", "symbol", symbol],
+    queryFn: () => api.refreshSymbol(symbol || ""),
+    enabled: Boolean(symbol),
+    refetchOnWindowFocus: false,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["prices", symbol] });
+      queryClient.invalidateQueries({ queryKey: ["summary", symbol] });
+      queryClient.invalidateQueries({ queryKey: ["insight", symbol] });
+      queryClient.invalidateQueries({ queryKey: ["market-snapshot"] });
+    },
   });
 
   const priceList = priceQuery.data?.prices || [];

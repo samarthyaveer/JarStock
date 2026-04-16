@@ -5,9 +5,17 @@ from db import get_db
 from schemas import (
     CompareResponse,
     InsightResponse,
+    MarketSnapshotResponse,
     MetricSeriesResponse,
     MoversResponse,
+    RefreshResponse,
     SummaryResponse,
+)
+from services.data_service import (
+    get_market_snapshot,
+    parse_symbols_param,
+    refresh_market_data,
+    resolve_symbols,
 )
 from services.insight_service import generate_insight
 from services.metrics_service import compare_symbols, get_metric_series, get_summary, get_top_movers
@@ -58,3 +66,23 @@ def top_losers(
     db: Session = Depends(get_db),
 ) -> MoversResponse:
     return get_top_movers(db, limit, "losers")
+
+
+@router.get("/market/snapshot", response_model=MarketSnapshotResponse)
+def market_snapshot(db: Session = Depends(get_db)) -> MarketSnapshotResponse:
+    return get_market_snapshot(db)
+
+
+@router.post("/refresh/market", response_model=RefreshResponse)
+def refresh_market(
+    symbols: str | None = Query(None),
+    db: Session = Depends(get_db),
+) -> RefreshResponse:
+    parsed = parse_symbols_param(symbols)
+    resolved = resolve_symbols(db, parsed)
+    result = refresh_market_data(db, resolved)
+    return RefreshResponse(
+        scope="market",
+        refreshed=result["refreshed"],
+        skipped=result["skipped"],
+    )

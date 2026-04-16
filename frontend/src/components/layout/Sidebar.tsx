@@ -2,10 +2,10 @@ import React from "react";
 import { NavLink } from "react-router-dom";
 
 const navItems = [
-  { label: "Dashboard", to: "/dashboard", short: "D" },
-  { label: "Market", to: "/market", short: "M" },
-  { label: "Search", to: "/search", short: "S" },
-  { label: "Watchlist", to: "/watchlist", short: "W" },
+  { label: "Dashboard", to: "/dashboard" },
+  { label: "Market", to: "/market" },
+  { label: "Search", to: "/search" },
+  { label: "Watchlist", to: "/watchlist" },
 ];
 
 const Sidebar = () => (
@@ -19,17 +19,14 @@ const Sidebar = () => (
           aria-label={item.label}
           className={({ isActive }) =>
             [
-              "list-item flex items-center gap-3 rounded-card px-3 py-2 text-body",
+              "list-item flex items-center rounded-card px-3 py-3 text-body",
               isActive
                 ? "list-item-active"
                 : "text-text-muted hover:text-text-primary",
             ].join(" ")
           }
         >
-          <span className="chip flex h-9 w-9 items-center justify-center rounded-chip text-label">
-            {item.short}
-          </span>
-          <span className="hidden lg:block">{item.label}</span>
+          <span className="hidden lg:block font-display text-sub">{item.label}</span>
         </NavLink>
       ))}
     </nav>

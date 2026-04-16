@@ -1,44 +1,42 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "../api/client";
 import StockRow from "../components/data/StockRow";
 import SkeletonRow from "../components/data/SkeletonRow";
-import type { PriceSeriesResponse } from "../types/api";
-
 const Market = () => {
   const navigate = useNavigate();
-  const companiesQuery = useQuery({
-    queryKey: ["companies"],
-    queryFn: api.getCompanies,
+  const queryClient = useQueryClient();
+
+  const marketQuery = useQuery({
+    queryKey: ["market-snapshot"],
+    queryFn: api.getMarketSnapshot,
   });
 
-  const priceQueries = useQuery({
-    queryKey: [
-      "market-prices",
-      companiesQuery.data?.map((company) => company.symbol),
-    ],
-    queryFn: async () => {
-      if (!companiesQuery.data) {
-        return [] as PriceSeriesResponse[];
-      }
-      return Promise.all(
-        companiesQuery.data.map((company) =>
-          api.getPriceSeries(company.symbol, "30d"),
-        ),
-      );
+  useQuery({
+    queryKey: ["refresh", "market"],
+    queryFn: () => api.refreshMarketSnapshot(),
+    enabled: marketQuery.isFetched,
+    refetchOnWindowFocus: false,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["market-snapshot"] });
     },
-    enabled: Boolean(companiesQuery.data),
   });
 
-  const priceMap = new Map(
-    (priceQueries.data || []).map((series) => [series.symbol, series.prices]),
-  );
+  const marketItems = marketQuery.data?.items || [];
+  const asOf = marketQuery.data?.as_of;
 
   return (
     <div className="panel-card rounded-panel p-3 md:p-4">
-      <div className="text-label text-text-muted">Market</div>
+      <div className="flex items-center justify-between">
+        <div className="text-label text-text-muted">Market</div>
+        {asOf ? (
+          <div className="text-label text-text-muted font-mono">
+            As of {asOf}
+          </div>
+        ) : null}
+      </div>
       <div className="mt-3 overflow-x-auto">
         <table className="w-full min-w-[640px] table-fixed text-body">
           <colgroup>
@@ -56,24 +54,33 @@ const Market = () => {
             </tr>
           </thead>
           <tbody>
-            {companiesQuery.isLoading && (
+            {marketQuery.isLoading && (
               <>
                 <SkeletonRow />
                 <SkeletonRow />
                 <SkeletonRow />
               </>
             )}
-            {companiesQuery.data?.map((company) => (
+            {marketItems.map((item) => (
               <StockRow
-                key={company.symbol}
-                company={company}
-                prices={priceMap.get(company.symbol)}
+                key={item.symbol}
+                company={{
+                  symbol: item.symbol,
+                  name: item.name,
+                  sector: item.sector,
+                }}
+                prices={item.prices}
                 onSelect={(symbol) => navigate(`/stocks/${symbol}`)}
               />
             ))}
           </tbody>
         </table>
       </div>
+      {marketQuery.isError && (
+        <div className="mt-3 text-body text-text-muted">
+          Unable to load market data.
+        </div>
+      )}
     </div>
   );
 };

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "../api/client";
 import InsightCard from "../components/cards/InsightCard";
@@ -26,6 +26,7 @@ const Dashboard = () => {
   const setSelectedSymbol = useUiStore((state) => state.setSelectedSymbol);
   const toggleWatch = useWatchlistStore((state) => state.toggleSymbol);
   const isWatching = useWatchlistStore((state) => state.isWatching);
+  const queryClient = useQueryClient();
 
   const companiesQuery = useQuery({
     queryKey: ["companies"],
@@ -108,6 +109,28 @@ const Dashboard = () => {
     enabled: Boolean(
       selectedSymbol && compareSymbol && selectedSymbol !== compareSymbol,
     ),
+  });
+
+  useQuery({
+    queryKey: ["refresh", "symbol", selectedSymbol],
+    queryFn: () => api.refreshSymbol(selectedSymbol || ""),
+    enabled: Boolean(selectedSymbol),
+    refetchOnWindowFocus: false,
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["prices", selectedSymbol],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["summary", selectedSymbol],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["insight", selectedSymbol],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["compare", selectedSymbol],
+      });
+      queryClient.invalidateQueries({ queryKey: ["market-snapshot"] });
+    },
   });
 
   const selectedCompany = useMemo(() => {

@@ -1,6 +1,9 @@
 import json
 import logging
 import os
+import threading
+import time
+from datetime import date, timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import Iterable, Optional
@@ -8,11 +11,17 @@ from typing import Iterable, Optional
 import pandas as pd
 import yfinance as yf
 from fastapi import HTTPException
-from sqlalchemy import delete
+from sqlalchemy import delete, func
 from sqlalchemy.orm import Session
 
 from models import Metric, Price, Stock
-from schemas import CompanyOut, PricePoint, PriceSeriesResponse
+from schemas import (
+    CompanyOut,
+    MarketSnapshotItem,
+    MarketSnapshotResponse,
+    PricePoint,
+    PriceSeriesResponse,
+)
 
 logger = logging.getLogger("jarstock")
 
@@ -29,10 +38,81 @@ DEFAULT_SYMBOLS = [
 
 FALLBACK_PATH = Path(__file__).resolve().parents[1] / "data" / "fallback_prices.json"
 
+_REFRESH_LOCK = threading.Lock()
+_REFRESH_IN_FLIGHT: set[str] = set()
+_LAST_REFRESH: dict[str, float] = {}
+_MARKET_SNAPSHOT_WINDOW = 7
+
 
 def list_companies(db: Session) -> list[CompanyOut]:
     rows = db.query(Stock).order_by(Stock.symbol.asc()).all()
     return [CompanyOut(symbol=row.symbol, name=row.name, sector=row.sector) for row in rows]
+
+
+def parse_symbols_param(symbols_param: Optional[str]) -> list[str]:
+    if not symbols_param:
+        return []
+    return _parse_symbols(symbols_param)
+
+
+def resolve_symbols(db: Session, symbols: Optional[Iterable[str]] = None) -> list[str]:
+    normalized = [s for s in (_normalize_symbol(item) for item in (symbols or [])) if s]
+    if normalized:
+        return sorted(set(normalized))
+
+    rows = db.query(Stock.symbol).order_by(Stock.symbol.asc()).all()
+    if rows:
+        return [row[0] for row in rows]
+
+    return DEFAULT_SYMBOLS
+
+
+def get_market_snapshot(db: Session, window: int = _MARKET_SNAPSHOT_WINDOW) -> MarketSnapshotResponse:
+    stocks = db.query(Stock).order_by(Stock.symbol.asc()).all()
+    if not stocks:
+        fallback = _fallback_market_snapshot(window)
+        if fallback:
+            return fallback
+        raise HTTPException(status_code=404, detail="No market data available")
+
+    items: list[MarketSnapshotItem] = []
+    as_of_dates = []
+    for stock in stocks:
+        rows = (
+            db.query(Price)
+            .filter(Price.symbol == stock.symbol)
+            .order_by(Price.date.desc())
+            .limit(window)
+            .all()
+        )
+        if not rows:
+            continue
+        recent = list(reversed(rows))
+        price_points = [
+            PricePoint(date=row.date, close=row.close)
+            for row in recent
+            if row.close is not None
+        ]
+        if not price_points:
+            continue
+        items.append(
+            MarketSnapshotItem(
+                symbol=stock.symbol,
+                name=stock.name,
+                sector=stock.sector,
+                prices=price_points,
+            )
+        )
+        as_of_dates.append(price_points[-1].date)
+
+    if not items:
+        fallback = _fallback_market_snapshot(window)
+        if fallback:
+            return fallback
+        raise HTTPException(status_code=404, detail="No market data available")
+
+    as_of = max(as_of_dates)
+    return MarketSnapshotResponse(as_of=as_of, items=items)
 
 
 def get_price_series(
@@ -59,22 +139,129 @@ def get_price_series(
     return PriceSeriesResponse(symbol=symbol, prices=prices)
 
 
+def refresh_symbol_if_needed(
+    db: Session,
+    symbol: str,
+    force: bool = False,
+) -> bool:
+    symbol = _normalize_symbol(symbol)
+    if not symbol:
+        return False
+
+    if not force:
+        latest_date = _latest_price_date(db, symbol)
+        if latest_date and _is_recent_date(latest_date, _market_stale_days()):
+            return False
+
+    now = time.time()
+    with _REFRESH_LOCK:
+        if symbol in _REFRESH_IN_FLIGHT:
+            return False
+        if not force:
+            last = _LAST_REFRESH.get(symbol)
+            if last and now - last < _refresh_ttl_seconds():
+                return False
+        _REFRESH_IN_FLIGHT.add(symbol)
+
+    try:
+        include_info = _should_fetch_info(db, symbol)
+        refresh_symbol(db, symbol, include_info=include_info)
+        with _REFRESH_LOCK:
+            _LAST_REFRESH[symbol] = time.time()
+        return True
+    finally:
+        with _REFRESH_LOCK:
+            _REFRESH_IN_FLIGHT.discard(symbol)
+
+
+def refresh_market_data(
+    db: Session,
+    symbols: Iterable[str],
+    force: bool = False,
+) -> dict[str, list[str]]:
+    normalized = [_normalize_symbol(item) for item in symbols if item]
+    normalized = sorted({symbol for symbol in normalized if symbol})
+    if not normalized:
+        return {"refreshed": [], "skipped": []}
+
+    now = time.time()
+    symbols_to_refresh: list[str] = []
+    skipped: list[str] = []
+    latest_dates = _latest_price_dates(db, normalized)
+    stale_days = _market_stale_days()
+
+    with _REFRESH_LOCK:
+        for symbol in normalized:
+            if symbol in _REFRESH_IN_FLIGHT:
+                skipped.append(symbol)
+                continue
+            if not force:
+                last = _LAST_REFRESH.get(symbol)
+                if last and now - last < _refresh_ttl_seconds():
+                    skipped.append(symbol)
+                    continue
+                latest_date = latest_dates.get(symbol)
+                if latest_date and _is_recent_date(latest_date, stale_days):
+                    skipped.append(symbol)
+                    continue
+            _REFRESH_IN_FLIGHT.add(symbol)
+            symbols_to_refresh.append(symbol)
+
+    if not symbols_to_refresh:
+        return {"refreshed": [], "skipped": skipped}
+
+    refreshed: list[str] = []
+    try:
+        history_map = _fetch_history_bulk(symbols_to_refresh)
+        existing = {
+            stock.symbol: stock
+            for stock in db.query(Stock)
+            .filter(Stock.symbol.in_(symbols_to_refresh))
+            .all()
+        }
+
+        for symbol in symbols_to_refresh:
+            df = history_map.get(symbol)
+            if df is None or df.empty:
+                df = _fallback_history(symbol)
+            if df is None or df.empty:
+                skipped.append(symbol)
+                continue
+
+            name, sector = _resolve_stock_info(symbol, existing.get(symbol), include_info=False)
+            _upsert_symbol_data(db, symbol, name, sector, df, existing)
+            refreshed.append(symbol)
+
+        db.commit()
+
+        with _REFRESH_LOCK:
+            refreshed_at = time.time()
+            for symbol in refreshed:
+                _LAST_REFRESH[symbol] = refreshed_at
+    finally:
+        with _REFRESH_LOCK:
+            for symbol in symbols_to_refresh:
+                _REFRESH_IN_FLIGHT.discard(symbol)
+
+    return {"refreshed": refreshed, "skipped": skipped}
+
+
 def bootstrap_data(db: Session) -> None:
     refresh = os.getenv("JARSTOCK_REFRESH_ON_STARTUP", "0") == "1"
     symbols_env = os.getenv("JARSTOCK_SYMBOLS")
     symbols = _parse_symbols(symbols_env) if symbols_env else DEFAULT_SYMBOLS
+    has_data = db.query(Stock).count() > 0
 
-    if not refresh and db.query(Stock).count() > 0:
+    if not refresh and has_data:
         return
 
-    for symbol in symbols:
-        try:
-            refresh_symbol(db, symbol)
-        except Exception as exc:
-            logger.warning("bootstrap_failed", extra={"symbol": symbol, "error": str(exc)})
+    try:
+        refresh_market_data(db, symbols, force=not has_data)
+    except Exception as exc:
+        logger.warning("bootstrap_failed", extra={"error": str(exc)})
 
 
-def refresh_symbol(db: Session, symbol: str) -> None:
+def refresh_symbol(db: Session, symbol: str, include_info: bool = True) -> None:
     symbol = _normalize_symbol(symbol)
     if not symbol:
         return
@@ -83,17 +270,81 @@ def refresh_symbol(db: Session, symbol: str) -> None:
     if df.empty:
         raise HTTPException(status_code=404, detail=f"No data for {symbol}")
 
-    info = _fetch_info(symbol)
-    name = info.get("longName") or info.get("shortName") or symbol
-    sector = info.get("sector")
-
     stock = db.query(Stock).filter(Stock.symbol == symbol).one_or_none()
+    name, sector = _resolve_stock_info(symbol, stock, include_info=include_info)
+    _upsert_symbol_data(db, symbol, name, sector, df, {symbol: stock} if stock else {})
+    db.commit()
+
+
+def _refresh_ttl_seconds() -> int:
+    raw_value = os.getenv("JARSTOCK_REFRESH_TTL_SECONDS", "900")
+    try:
+        value = int(raw_value)
+    except ValueError:
+        value = 900
+    return max(60, value)
+
+
+def _market_stale_days() -> int:
+    raw_value = os.getenv("JARSTOCK_MARKET_STALE_DAYS", "2")
+    try:
+        value = int(raw_value)
+    except ValueError:
+        value = 2
+    return max(1, value)
+
+
+def _should_fetch_info(db: Session, symbol: str) -> bool:
+    stock = db.query(Stock).filter(Stock.symbol == symbol).one_or_none()
+    if stock is None:
+        return True
+    return not stock.name
+
+
+def _resolve_stock_info(
+    symbol: str,
+    stock: Optional[Stock],
+    include_info: bool,
+) -> tuple[str, Optional[str]]:
+    info: dict = {}
+    if include_info:
+        info = _fetch_info(symbol)
+
+    fallback_info = _fallback_info(symbol)
+    name = (
+        info.get("longName")
+        or info.get("shortName")
+        or (stock.name if stock else None)
+        or fallback_info.get("longName")
+        or fallback_info.get("shortName")
+        or symbol
+    )
+    sector = (
+        info.get("sector")
+        or (stock.sector if stock else None)
+        or fallback_info.get("sector")
+    )
+    return name, sector
+
+
+def _upsert_symbol_data(
+    db: Session,
+    symbol: str,
+    name: str,
+    sector: Optional[str],
+    df: pd.DataFrame,
+    existing: Optional[dict[str, Stock]] = None,
+) -> None:
+    stock = existing.get(symbol) if existing else None
     if stock is None:
         stock = Stock(symbol=symbol, name=name, sector=sector)
         db.add(stock)
+        if existing is not None:
+            existing[symbol] = stock
     else:
         stock.name = name
-        stock.sector = sector
+        if sector is not None:
+            stock.sector = sector
 
     db.execute(delete(Price).where(Price.symbol == symbol))
     db.execute(delete(Metric).where(Metric.symbol == symbol))
@@ -103,7 +354,6 @@ def refresh_symbol(db: Session, symbol: str) -> None:
         db.bulk_save_objects(price_rows)
     if metric_rows:
         db.bulk_save_objects(metric_rows)
-    db.commit()
 
 
 def _fetch_history(symbol: str) -> pd.DataFrame:
@@ -125,6 +375,46 @@ def _fetch_history(symbol: str) -> pd.DataFrame:
         return fallback_df
 
     return pd.DataFrame()
+
+
+def _fetch_history_bulk(symbols: list[str]) -> dict[str, pd.DataFrame]:
+    proxy = _get_proxy()
+    if not symbols:
+        return {}
+
+    try:
+        df = yf.download(
+            tickers=" ".join(symbols),
+            period="1y",
+            group_by="ticker",
+            auto_adjust=False,
+            threads=False,
+            progress=False,
+            proxy=proxy,
+        )
+    except Exception as exc:
+        logger.warning("yfinance_bulk_failed", extra={"error": str(exc)})
+        return {}
+
+    result: dict[str, pd.DataFrame] = {}
+    if df is None or df.empty:
+        return result
+
+    if isinstance(df.columns, pd.MultiIndex):
+        for symbol in symbols:
+            if symbol not in df.columns.levels[0]:
+                continue
+            symbol_df = df[symbol].copy()
+            cleaned = _clean_history(symbol_df)
+            if not cleaned.empty:
+                result[symbol] = cleaned
+        return result
+
+    symbol = symbols[0]
+    cleaned = _clean_history(df)
+    if not cleaned.empty:
+        result[symbol] = cleaned
+    return result
 
 
 def _fetch_info(symbol: str) -> dict:
@@ -227,6 +517,32 @@ def _get_proxy() -> Optional[str]:
     return proxy or None
 
 
+def _is_recent_date(value: date, stale_days: int) -> bool:
+    cutoff = date.today() - timedelta(days=stale_days)
+    return value >= cutoff
+
+
+def _latest_price_dates(db: Session, symbols: list[str]) -> dict[str, date]:
+    if not symbols:
+        return {}
+    rows = (
+        db.query(Price.symbol, func.max(Price.date))
+        .filter(Price.symbol.in_(symbols))
+        .group_by(Price.symbol)
+        .all()
+    )
+    return {symbol: latest for symbol, latest in rows if latest}
+
+
+def _latest_price_date(db: Session, symbol: str) -> Optional[date]:
+    row = (
+        db.query(func.max(Price.date))
+        .filter(Price.symbol == symbol)
+        .one()
+    )
+    return row[0] if row else None
+
+
 @lru_cache(maxsize=1)
 def _fallback_payload() -> dict:
     if not FALLBACK_PATH.exists():
@@ -237,6 +553,59 @@ def _fallback_payload() -> dict:
     except Exception as exc:
         logger.warning("fallback_load_failed", extra={"error": str(exc)})
         return {}
+
+
+def _parse_date_value(value: Optional[str]) -> Optional[date]:
+    if not value:
+        return None
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value))
+    except ValueError:
+        return None
+
+
+def _fallback_market_snapshot(window: int) -> Optional[MarketSnapshotResponse]:
+    payload = _fallback_payload()
+    symbols = payload.get("symbols") or {}
+    if not symbols:
+        return None
+
+    as_of = _parse_date_value(payload.get("as_of"))
+    items: list[MarketSnapshotItem] = []
+    derived_as_of: Optional[date] = None
+
+    for symbol, entry in symbols.items():
+        prices = entry.get("prices") or []
+        recent = prices[-window:] if window else prices
+        points: list[PricePoint] = []
+        for item in recent:
+            item_date = _parse_date_value(item.get("date"))
+            close = item.get("close")
+            if item_date is None or close is None:
+                continue
+            points.append(PricePoint(date=item_date, close=float(close)))
+        if not points:
+            continue
+        items.append(
+            MarketSnapshotItem(
+                symbol=symbol,
+                name=entry.get("name") or symbol,
+                sector=entry.get("sector"),
+                prices=points,
+            )
+        )
+        derived_as_of = (
+            max(derived_as_of, points[-1].date)
+            if derived_as_of
+            else points[-1].date
+        )
+
+    if not items:
+        return None
+
+    return MarketSnapshotResponse(as_of=as_of or derived_as_of or date.today(), items=items)
 
 
 def _fallback_history(symbol: str) -> pd.DataFrame:

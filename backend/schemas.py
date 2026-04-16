@@ -20,6 +20,18 @@ class PriceSeriesResponse(BaseModel):
     prices: list[PricePoint]
 
 
+class MarketSnapshotItem(BaseModel):
+    symbol: str
+    name: str
+    sector: Optional[str] = None
+    prices: list[PricePoint]
+
+
+class MarketSnapshotResponse(BaseModel):
+    as_of: date
+    items: list[MarketSnapshotItem]
+
+
 class SummaryResponse(BaseModel):
     symbol: str
     high_52w: float
@@ -71,3 +83,9 @@ class MoverItem(BaseModel):
 class MoversResponse(BaseModel):
     as_of: date
     items: list[MoverItem]
+
+
+class RefreshResponse(BaseModel):
+    scope: str
+    refreshed: list[str]
+    skipped: list[str]

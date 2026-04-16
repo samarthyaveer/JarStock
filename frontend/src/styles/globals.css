@@ -114,6 +114,10 @@ a {
   .app-shell-content {
     animation: none;
   }
+
+  .spinner {
+    animation: none;
+  }
 }
 
 @layer components {
@@ -186,6 +190,15 @@ a {
   font-variant-numeric: tabular-nums;
 }
 
+.spinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 2px solid rgba(154, 163, 178, 0.35);
+  border-top-color: var(--accent-blue);
+  animation: spin 0.8s linear infinite;
+}
+
 .flash-up {
   color: var(--accent-green);
   transition: color 0.3s ease;
@@ -234,6 +247,12 @@ a {
   }
 }
 
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @keyframes page-fade {
   from {
     opacity: 0;
@@ -242,5 +261,12 @@ a {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
   }
 }

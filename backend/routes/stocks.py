@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from db import get_db
-from schemas import PriceSeriesResponse
-from services.data_service import get_price_series
+from schemas import PriceSeriesResponse, RefreshResponse
+from services.data_service import get_price_series, refresh_symbol_if_needed
 
 router = APIRouter()
 
@@ -15,3 +15,17 @@ def get_stock_data(
     db: Session = Depends(get_db),
 ) -> PriceSeriesResponse:
     return get_price_series(db, symbol, range_label)
+
+
+@router.post("/refresh/{symbol}", response_model=RefreshResponse)
+def refresh_symbol(
+    symbol: str,
+    db: Session = Depends(get_db),
+) -> RefreshResponse:
+    refreshed = refresh_symbol_if_needed(db, symbol)
+    normalized = symbol.strip().upper()
+    return RefreshResponse(
+        scope="symbol",
+        refreshed=[normalized] if refreshed else [],
+        skipped=[] if refreshed else [normalized],
+    )

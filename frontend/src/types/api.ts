@@ -19,6 +19,18 @@ export interface PriceSeriesResponse {
   prices: PricePoint[];
 }
 
+export interface MarketSnapshotItem {
+  symbol: string;
+  name: string;
+  sector?: string | null;
+  prices: PricePoint[];
+}
+
+export interface MarketSnapshotResponse {
+  as_of: string;
+  items: MarketSnapshotItem[];
+}
+
 export interface SummaryResponse {
   symbol: string;
   high_52w: number;
@@ -70,4 +82,10 @@ export interface MoverItem {
 export interface MoversResponse {
   as_of: string;
   items: MoverItem[];
+}
+
+export interface RefreshResponse {
+  scope: string;
+  refreshed: string[];
+  skipped: string[];
 }
