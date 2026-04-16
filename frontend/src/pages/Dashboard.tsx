@@ -19,6 +19,8 @@ const Dashboard = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [range, setRange] = useState("90d");
   const [showPrediction, setShowPrediction] = useState(false);
+  const [showMovers, setShowMovers] = useState(false);
+  const [showCompare, setShowCompare] = useState(false);
   const [compareSymbol, setCompareSymbol] = useState<string | null>(null);
   const selectedSymbol = useUiStore((state) => state.selectedSymbol);
   const setSelectedSymbol = useUiStore((state) => state.setSelectedSymbol);
@@ -228,7 +230,25 @@ const Dashboard = () => {
             />
           </div>
 
-          <div className="grid grid-cols-1 gap-3 md:gap-4 lg:grid-cols-2">
+          <div className="flex items-center justify-between md:hidden">
+            <div className="text-label text-text-muted">Sections</div>
+            <div className="flex gap-2">
+              <ToggleButton
+                active={showMovers}
+                onClick={() => setShowMovers((prev) => !prev)}
+                label="Movers"
+              />
+              <ToggleButton
+                active={showCompare}
+                onClick={() => setShowCompare((prev) => !prev)}
+                label="Compare"
+              />
+            </div>
+          </div>
+
+          <div
+            className={`${showMovers ? "grid" : "hidden"} grid-cols-1 gap-3 md:gap-4 md:grid lg:grid-cols-2`}
+          >
             <MoversCard
               title="Top Gainers"
               items={gainersQuery.data?.items}
@@ -241,7 +261,9 @@ const Dashboard = () => {
             />
           </div>
 
-          <div className="rounded-panel border border-border bg-bg-card p-3 md:p-4">
+          <div
+            className={`${showCompare ? "block" : "hidden"} rounded-panel border border-border bg-bg-card p-3 md:block md:p-4`}
+          >
             <div className="flex items-center justify-between">
               <div className="text-label text-text-muted">Compare</div>
               <div className="flex gap-2">
